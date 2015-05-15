@@ -83,6 +83,59 @@ void write_gibbs_output(gibbs_state * state)
     }
 }
 
+void write_gibbs_output_heldout(gibbs_state * state)
+{
+    FILE* score_f = state->score_log;
+    corpus * corp = state->corp;
+    tree * tr = state->tr;
+    int depth = tr->depth;
+
+    if (score_f != NULL)
+    {
+        fprintf(state->score_log,
+                "%06d %14.3f %14.3f %14.3f %14.3f %7.4e %7.4e",
+                state->iter, state->gem_score, state->eta_score,
+                state->gamma_score, state->score,
+                corp->gem_mean, corp->gem_scale);
+        int l;
+        for (l = 0; l < depth - 1; l++)
+        {
+            fprintf(state->score_log, " %7.4e", vget(tr->gam,l));
+        }
+        for (l = 0; l < depth; l++)
+        {
+            fprintf(state->score_log, " %7.4e", vget(tr->eta,l));
+        }
+
+        fprintf(state->score_log, "\n");
+        fflush(state->score_log);
+    }
+    if (state->tree_structure_log != NULL)
+    {
+        write_tree_levels(tr, state->tree_structure_log);
+    }
+    if (state->run_dir != NULL)
+    {
+        char filename[100];
+        if ((state->output_lag > 0) &&
+            (state->iter % state->output_lag) == 0)
+        {
+            sprintf(filename, "%s/heldout_iter=%06d", state->run_dir, state->iter);
+            write_gibbs_state(state, filename);
+        }
+        if (state->score == state->max_score)
+        {
+            outlog("mode at iteration %04d", state->iter);
+            sprintf(filename, "%s/heldout_mode", state->run_dir);
+            write_gibbs_state(state, filename);
+            sprintf(filename, "%s/heldout_mode.levels", state->run_dir);
+            FILE* levels_file = fopen(filename, "w");
+            write_corpus_levels(state->corp, levels_file);
+            fclose(levels_file);
+        }
+    }
+}
+
 void compute_gibbs_score(gibbs_state * state)
 {
     tree * tr = state->tr;
@@ -365,6 +418,10 @@ double mean_heldout_score(corpus* corp,
             nsamples += 1;
         }
     }
+    state->output_lag = orig->output_lag;
+    state->run_dir=orig->run_dir;
+    state->iter=orig->iter;
+    write_gibbs_output_heldout(state);
     score = score / nsamples;
     outlog("mean held-out score = %7.3f (%d samples)", score, nsamples);
     free_tree(state->tr);
